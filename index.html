@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Dati Lago Interattivi</title>
+    <style>
+      /* Caricamento font */
+      @font-face {
+        font-family: "CustomFont1";
+        src: url("./fonts/01.ttf") format("truetype");
+      }
+      @font-face {
+        font-family: "CustomFont2";
+        src: url("./fonts/02.ttf") format("truetype");
+      }
+      @font-face {
+        font-family: "CustomFont3";
+        src: url("./fonts/03.ttf") format("truetype");
+      }
+      @font-face {
+        font-family: "CustomFont4";
+        src: url("./fonts/04.ttf") format("truetype");
+      }
+      @font-face {
+        font-family: "CustomFont5";
+        src: url("./fonts/05.ttf") format("truetype");
+      }
+      @font-face {
+        font-family: "CustomFont6";
+        src: url("./fonts/06.ttf") format("truetype");
+      }
+      @font-face {
+        font-family: "CustomFont7";
+        src: url("./fonts/07.ttf") format("truetype");
+      }
+      @font-face {
+        font-family: "CustomFont8";
+        src: url("./fonts/08.ttf") format("truetype");
+      }
+      @font-face {
+        font-family: "CustomFont9";
+        src: url("./fonts/09.ttf") format("truetype");
+      }
+      @font-face {
+        font-family: "CustomFont10";
+        src: url("./fonts/10.ttf") format("truetype");
+      }
+
+      body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        background-color: #f0f0f0;
+        overflow: hidden;
+      }
+
+      #controls {
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        width: 200px;
+        background: rgba(255, 255, 255, 0.9);
+        padding: 10px;
+        border-radius: 6px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+        z-index: 10;
+      }
+
+      canvas {
+        border: 0.8px solid black;
+        background-color: white;
+        display: block;
+        max-width: 90vw;
+        max-height: 90vh;
+        width: auto;
+        height: auto;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="controls">
+      <label for="dateSelector">Seleziona la data:</label>
+      <!-- Limite selezione solo anno 2020 -->
+      <input type="date" id="dateSelector" min="2020-01-01" max="2020-12-31" />
+    </div>
+
+    <canvas id="lakeCanvas"></canvas>
+
+    <script>
+      const canvas = document.getElementById("lakeCanvas");
+      const ctx = canvas.getContext("2d");
+
+      const fonts = [
+        "CustomFont1",
+        "CustomFont2",
+        "CustomFont3",
+        "CustomFont4",
+        "CustomFont5",
+        "CustomFont6",
+        "CustomFont7",
+        "CustomFont8",
+        "CustomFont9",
+        "CustomFont10",
+      ];
+
+      let data = [];
+      let currentDayData = null;
+      const baseWidth = 595;
+      const baseHeight = 842;
+
+      // Funzione HiDPI responsive
+      function resizeCanvas() {
+        const containerWidth = window.innerWidth * 0.9;
+        const containerHeight = window.innerHeight * 0.9;
+        const ratio = Math.min(
+          containerWidth / baseWidth,
+          containerHeight / baseHeight
+        );
+
+        const dpr = window.devicePixelRatio || 1;
+
+        canvas.width = baseWidth * ratio * dpr;
+        canvas.height = baseHeight * ratio * dpr;
+
+        canvas.style.width = `${baseWidth * ratio}px`;
+        canvas.style.height = `${baseHeight * ratio}px`;
+
+        ctx.setTransform(1, 0, 0, 1, 0, 0); // reset
+        ctx.scale(dpr * ratio, dpr * ratio);
+
+        drawDayData(currentDayData);
+      }
+
+      // Carica dati
+      fetch("data.json")
+        .then((res) => res.json())
+        .then((jsonData) => {
+          // Filtra solo dati del 2020
+          data = jsonData.filter((d) => d.date.startsWith("2020"));
+          populateDateSelector();
+        })
+        .catch((err) => console.error("Errore caricamento dati:", err));
+
+      function populateDateSelector() {
+        const selector = document.getElementById("dateSelector");
+        data.forEach((entry) => {
+          const option = document.createElement("option");
+          option.value = entry.date;
+          option.textContent = entry.date;
+          selector.appendChild(option);
+        });
+      }
+
+      document
+        .getElementById("dateSelector")
+        .addEventListener("change", (e) => {
+          const selectedDate = e.target.value;
+          currentDayData = data.find((d) => d.date === selectedDate);
+          drawDayData(currentDayData);
+        });
+
+      function clearCanvas() {
+        ctx.clearRect(0, 0, baseWidth, baseHeight);
+        ctx.fillStyle = "white";
+        ctx.fillRect(0, 0, baseWidth, baseHeight);
+        ctx.strokeStyle = "black";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(0, 0, baseWidth, baseHeight);
+      }
+
+      // Mappa temperatura a font weight
+      function mapTempToFontIndex(temp) {
+        if (!data.length) return 5;
+        const temps = data.map((d) => d.temp_mean_GR);
+        const minTemp = Math.min(...temps);
+        const maxTemp = Math.max(...temps);
+        const ratio = (temp - minTemp) / (maxTemp - minTemp);
+        const fontIndex = Math.round((1 - ratio) * 9) + 1;
+        return Math.min(Math.max(fontIndex, 1), 10);
+      }
+
+      // Disegna un numero con spaziatura interna regolata dal vento
+      function drawNumberWithSpacing(number, x, y, windValue, fontSize, ctx) {
+        const digits = number.toString().split("");
+        if (windValue > 10) windValue = 10;
+        const baseSpacing = fontSize * 0.4;
+        const maxExtraSpacing = fontSize * 2;
+        const spacing =
+          baseSpacing + Math.pow(windValue / 10, 2) * maxExtraSpacing;
+
+        // Controllo per non uscire dal canvas
+        const totalWidth = spacing * (digits.length - 1) + fontSize;
+        if (x + totalWidth > baseWidth) x = baseWidth - totalWidth - 5;
+        if (x < 0) x = 5;
+
+        for (let i = 0; i < digits.length; i++) {
+          ctx.fillText(digits[i], x + i * spacing, y);
+        }
+      }
+
+      // Disegna i dati del giorno
+      function drawDayData(dayData) {
+        clearCanvas();
+        if (!dayData) return;
+
+        const fontIndex = mapTempToFontIndex(dayData.temp_mean_GR);
+        const fontName = fonts[fontIndex - 1];
+
+        const scaleX =
+          canvas.width / baseWidth / (window.devicePixelRatio || 1);
+        const scaleY =
+          canvas.height / baseHeight / (window.devicePixelRatio || 1);
+        const fontSize = 20 * Math.min(scaleX, scaleY);
+
+        const windValue = dayData.windspeed_mean_GR || 0;
+
+        document.fonts.load(`${fontSize}px ${fontName}`).then(() => {
+          ctx.fillStyle = "black";
+          ctx.textAlign = "left";
+          ctx.textBaseline = "middle";
+          ctx.font = `${fontSize}px ${fontName}`;
+
+          for (const key in dayData) {
+            if (key !== "date") {
+              const value = dayData[key];
+
+              // Calcolo posizione casuale ma sicura
+              const posX =
+                Math.random() *
+                  (baseWidth - fontSize * value.toString().length - 20) +
+                10;
+              const posY =
+                Math.random() * (baseHeight - fontSize) + fontSize / 2;
+
+              drawNumberWithSpacing(
+                value,
+                posX,
+                posY,
+                windValue,
+                fontSize,
+                ctx
+              );
+            }
+          }
+        });
+      }
+
+      // Resize dinamico
+      window.addEventListener("resize", resizeCanvas);
+      resizeCanvas();
+    </script>
+  </body>
+</html>
